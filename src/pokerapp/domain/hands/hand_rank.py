@@ -9,5 +9,5 @@ class HandRank:
     tiebreakers: tuple[int, ...]
 
     @property
-    def comparison_key(self) -> tuple:
+    def comparison_key(self) -> tuple[int, tuple[int, ...]]:
         return self.category, self.tiebreakers

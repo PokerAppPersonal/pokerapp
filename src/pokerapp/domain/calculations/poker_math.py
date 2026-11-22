@@ -1,6 +1,7 @@
 """UI-independent Texas Hold'em calculation utilities."""
 from itertools import combinations
 import random
+from math import comb
 from typing import Sequence
 
 from pokerapp.domain.cards.card import Card, Rank, Suit
@@ -10,6 +11,7 @@ RANKS = tuple(Rank)
 SUITS = tuple(Suit)
 STANDARD_DECK_SIZE = 52
 BOARD_SIZE = 5
+VALID_BOARD_SIZES = (0, 3, 4, 5)
 
 
 def full_deck() -> list[Card]:
@@ -17,6 +19,8 @@ def full_deck() -> list[Card]:
 
 
 def validate_unique(cards: Sequence[Card]) -> None:
+    if any(not isinstance(card, Card) for card in cards):
+        raise ValueError("All values must be Card instances")
     if len(set(cards)) != len(cards):
         raise ValueError("Duplicate cards are not allowed")
 
@@ -30,42 +34,49 @@ def remaining_cards(known_cards: Sequence[Card]) -> list[Card]:
 def combinations_count(n: int, k: int) -> int:
     if n < 0 or k < 0 or k > n:
         return 0
-    from math import comb
     return comb(n, k)
 
 
-def outs(hole_cards: Sequence[Card], board: Sequence[Card], target_board_size: int = 5) -> list[Card]:
-    """Cards that strictly improve the evaluated hand on the next street."""
+def outs(hole_cards: Sequence[Card], board: Sequence[Card],
+         target_board_size: int = BOARD_SIZE) -> list[Card]:
+    """Return rank-improving next-card candidates, not necessarily winning outs."""
+    if target_board_size not in (4, BOARD_SIZE):
+        raise ValueError("target_board_size must be 4 or 5")
     if len(board) >= target_board_size:
         return []
     if len(board) not in (3, 4):
         raise ValueError("Outs calculation requires a flop or turn board")
-    validate_unique([*hole_cards, *board])
+    if len(hole_cards) != 2:
+        raise ValueError("Each player must have exactly two hole cards")
+    known = [*hole_cards, *board]
+    validate_unique(known)
     evaluator = HandEvaluator()
-    current = evaluator.evaluate([*hole_cards, *board])[0].comparison_key
-    return [card for card in remaining_cards([*hole_cards, *board])
-            if evaluator.evaluate([*hole_cards, *board, card])[0].comparison_key > current]
+    current = evaluator.evaluate(known)[0].comparison_key
+    return [card for card in remaining_cards(known)
+            if evaluator.evaluate([*known, card])[0].comparison_key > current]
 
 
-def _validate_equity_inputs(players: Sequence[Sequence[Card]], board: Sequence[Card]) -> list[Card]:
+def _validate_equity_inputs(players: Sequence[Sequence[Card]],
+                            board: Sequence[Card]) -> list[Card]:
     if len(players) < 2:
         raise ValueError("Equity requires at least two players")
+    if len(board) not in VALID_BOARD_SIZES:
+        raise ValueError("Board must contain 0, 3, 4, or 5 cards")
     if any(len(hole) != 2 for hole in players):
         raise ValueError("Each player must have exactly two hole cards")
     known = [*board, *(card for hole in players for card in hole)]
     validate_unique(known)
-    if len(board) > BOARD_SIZE:
-        raise ValueError("Board cannot contain more than five cards")
     return remaining_cards(known)
 
 
-def _winner_indices(players: Sequence[Sequence[Card]], board: Sequence[Card], evaluator: HandEvaluator) -> list[int]:
-    complete = [list(hole) + list(board) for hole in players]
-    return evaluator.highest_hand(complete)
+def _winner_indices(players: Sequence[Sequence[Card]], board: Sequence[Card],
+                    evaluator: HandEvaluator) -> list[int]:
+    return evaluator.highest_hand([list(hole) + list(board) for hole in players])
 
 
-def exact_equity(players: Sequence[Sequence[Card]], board: Sequence[Card]) -> list[float]:
-    """Enumerate every possible board completion; return share of pot per player."""
+def exact_equity(players: Sequence[Sequence[Card]],
+                 board: Sequence[Card]) -> list[float]:
+    """Enumerate every board completion and return each player's pot share."""
     deck = _validate_equity_inputs(players, board)
     needed = BOARD_SIZE - len(board)
     if needed > len(deck):
@@ -79,14 +90,17 @@ def exact_equity(players: Sequence[Sequence[Card]], board: Sequence[Card]) -> li
         for winner in winners:
             totals[winner] += share
         scenarios += 1
+    if scenarios == 0:
+        raise ValueError("No possible board completions")
     return [value / scenarios for value in totals]
 
 
-def monte_carlo_equity(players: Sequence[Sequence[Card]], board: Sequence[Card],
-                        trials: int = 10000, seed: int | None = None) -> list[float]:
-    """Estimate pot equity by randomly sampling board runouts."""
-    if trials <= 0:
-        raise ValueError("trials must be positive")
+def monte_carlo_equity(players: Sequence[Sequence[Card]],
+                       board: Sequence[Card], trials: int = 10000,
+                       seed: int | None = None) -> list[float]:
+    """Estimate each player's pot share using random board runouts."""
+    if not isinstance(trials, int) or isinstance(trials, bool) or trials <= 0:
+        raise ValueError("trials must be a positive integer")
     deck = _validate_equity_inputs(players, board)
     needed = BOARD_SIZE - len(board)
     if needed > len(deck):
