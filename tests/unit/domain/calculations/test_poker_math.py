@@ -2,11 +2,7 @@ import pytest
 
 from pokerapp.domain.cards.card import Card, Rank, Suit
 from pokerapp.domain.calculations.poker_math import (
-    combinations_count,
-    exact_equity,
-    full_deck,
-    monte_carlo_equity,
-    outs,
+    combinations_count, exact_equity, full_deck, monte_carlo_equity, outs,
     remaining_cards,
 )
 
@@ -16,13 +12,8 @@ def c(rank, suit):
 
 
 def river_board():
-    return [
-        c(2, Suit.CLUBS),
-        c(3, Suit.DIAMONDS),
-        c(4, Suit.HEARTS),
-        c(5, Suit.SPADES),
-        c(9, Suit.CLUBS),
-    ]
+    return [c(2, Suit.CLUBS), c(3, Suit.DIAMONDS), c(4, Suit.HEARTS),
+            c(5, Suit.SPADES), c(9, Suit.CLUBS)]
 
 
 def test_deck_has_52_unique_cards():
@@ -53,98 +44,70 @@ def test_combinations_count():
 
 
 def test_exact_equity_river_tie():
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(14, Suit.HEARTS), c(13, Suit.SPADES)],
-    ]
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(14, Suit.HEARTS), c(13, Suit.SPADES)]]
     assert exact_equity(players, river_board()) == [0.5, 0.5]
 
 
 def test_exact_equity_river_win():
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)],
-    ]
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)]]
     assert exact_equity(players, river_board()) == [1.0, 0.0]
 
 
-def test_exact_equity_three_way_tie_splits_pot_equally():
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(14, Suit.HEARTS), c(13, Suit.SPADES)],
-        [c(14, Suit.DIAMONDS), c(13, Suit.HEARTS)],
-    ]
-    # The board's straight is shared by all three players.
-    board = [
-        c(2, Suit.CLUBS),
-        c(3, Suit.DIAMONDS),
-        c(4, Suit.HEARTS),
-        c(5, Suit.SPADES),
-        c(6, Suit.CLUBS),
-    ]
+def test_exact_equity_three_way_split():
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(14, Suit.HEARTS), c(13, Suit.SPADES)],
+               [c(14, Suit.DIAMONDS), c(13, Suit.HEARTS)]]
+    board = [c(2, Suit.CLUBS), c(3, Suit.DIAMONDS), c(4, Suit.HEARTS),
+             c(5, Suit.SPADES), c(6, Suit.CLUBS)]
     assert exact_equity(players, board) == pytest.approx([1 / 3] * 3)
 
 
-@pytest.mark.parametrize(
-    "players, board",
-    [
-        ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)]], []),
-        ([[c(14, Suit.CLUBS)] , [c(13, Suit.CLUBS), c(12, Suit.CLUBS)]], []),
-        ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)],
-          [c(14, Suit.CLUBS), c(12, Suit.DIAMONDS)]], []),
-        ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)],
-          [c(12, Suit.CLUBS), c(11, Suit.CLUBS)]],
-         [c(2, Suit.CLUBS), c(3, Suit.CLUBS)]),
-    ],
-)
+@pytest.mark.parametrize("players, board", [
+    ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)]], []),
+    ([[c(14, Suit.CLUBS)], [c(13, Suit.CLUBS), c(12, Suit.CLUBS)]], []),
+    ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)],
+      [c(14, Suit.CLUBS), c(12, Suit.DIAMONDS)]], []),
+    ([[c(14, Suit.CLUBS), c(13, Suit.CLUBS)],
+      [c(12, Suit.CLUBS), c(11, Suit.CLUBS)]],
+     [c(2, Suit.CLUBS), c(3, Suit.CLUBS)]),
+])
 def test_exact_equity_rejects_invalid_inputs(players, board):
     with pytest.raises(ValueError):
         exact_equity(players, board)
 
 
-def test_exact_equity_rejects_duplicate_between_board_and_hole_cards():
+def test_exact_equity_rejects_board_hole_collision():
     board = river_board()
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [board[0], c(7, Suit.DIAMONDS)],
-    ]
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [board[0], c(7, Suit.DIAMONDS)]]
     with pytest.raises(ValueError, match="Duplicate"):
         exact_equity(players, board)
 
 
-def test_equity_results_sum_to_one_for_multiway_pot():
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)],
-        [c(12, Suit.CLUBS), c(11, Suit.DIAMONDS)],
-    ]
+def test_multiway_equity_shares_sum_to_one():
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)],
+               [c(12, Suit.CLUBS), c(11, Suit.DIAMONDS)]]
     equity = exact_equity(players, river_board())
+    assert len(equity) == 3
     assert sum(equity) == pytest.approx(1.0)
-    assert len(equity) == len(players)
 
 
 def test_monte_carlo_reproducible():
     board = [c(2, Suit.CLUBS), c(3, Suit.DIAMONDS), c(4, Suit.HEARTS)]
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)],
-    ]
-    assert monte_carlo_equity(players, board, trials=50, seed=42) == monte_carlo_equity(
-        players, board, trials=50, seed=42
-    )
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)]]
+    assert monte_carlo_equity(players, board, trials=50, seed=42) == (
+        monte_carlo_equity(players, board, trials=50, seed=42))
 
 
 def test_monte_carlo_converges_toward_exact_turn_equity():
-    board = [
-        c(2, Suit.CLUBS),
-        c(3, Suit.DIAMONDS),
-        c(4, Suit.HEARTS),
-        c(5, Suit.SPADES),
-    ]
-    players = [
-        [c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-        [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)],
-    ]
+    board = [c(2, Suit.CLUBS), c(3, Suit.DIAMONDS), c(4, Suit.HEARTS),
+             c(5, Suit.SPADES)]
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)]]
     exact = exact_equity(players, board)
     estimated = monte_carlo_equity(players, board, trials=5000, seed=2026)
     assert estimated == pytest.approx(exact, abs=0.04)
@@ -153,22 +116,15 @@ def test_monte_carlo_converges_toward_exact_turn_equity():
 
 @pytest.mark.parametrize("trials", [0, -1, 1.5, True])
 def test_monte_carlo_rejects_invalid_trial_counts(trials):
+    players = [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
+               [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)]]
     with pytest.raises(ValueError, match="positive integer"):
-        monte_carlo_equity(
-            [[c(14, Suit.CLUBS), c(13, Suit.DIAMONDS)],
-             [c(7, Suit.HEARTS), c(7, Suit.DIAMONDS)]],
-            river_board(),
-            trials=trials,
-        )
+        monte_carlo_equity(players, river_board(), trials=trials)
 
 
-def test_outs_returns_rank_improving_candidates_and_excludes_known_cards():
+def test_outs_finds_flush_improvers_and_excludes_known_cards():
     hole = [c(14, Suit.HEARTS), c(13, Suit.HEARTS)]
-    board = [
-        c(2, Suit.HEARTS),
-        c(7, Suit.HEARTS),
-        c(9, Suit.CLUBS),
-    ]
+    board = [c(2, Suit.HEARTS), c(7, Suit.HEARTS), c(9, Suit.CLUBS)]
     candidates = outs(hole, board)
     assert candidates
     assert not set(candidates).intersection([*hole, *board])
