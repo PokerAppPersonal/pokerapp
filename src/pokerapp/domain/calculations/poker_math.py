@@ -38,6 +38,8 @@ def outs(hole_cards: Sequence[Card], board: Sequence[Card], target_board_size: i
     """Cards that strictly improve the evaluated hand on the next street."""
     if len(board) >= target_board_size:
         return []
+    if len(board) not in (3, 4):
+        raise ValueError("Outs calculation requires a flop or turn board")
     validate_unique([*hole_cards, *board])
     evaluator = HandEvaluator()
     current = evaluator.evaluate([*hole_cards, *board])[0].comparison_key
