@@ -163,7 +163,7 @@ def test_duplicate_cards_rejected(evaluator, spec):
 
 @pytest.mark.parametrize("count", [0, 1, 3, 4, 8])
 def test_unsupported_card_count_rejected(evaluator, count):
-    cards = hand("2c 3d 4h 5s 6c 7d 8h")[:count]
+    cards = hand("2c 3d 4h 5s 6c 7d 8h 9c")[:count]
     with pytest.raises(ValueError, match="Expected"):
         evaluator.evaluate(cards)
 
